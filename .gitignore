@@ -26,3 +26,7 @@ media/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Documentation (ignore internal confidential docs, allow only README)
+*.md
+!README.md
