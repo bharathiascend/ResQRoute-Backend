@@ -66,6 +66,14 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             'delivery_address'
         )
 
+    def validate_username(self, value):
+        sanitized = value.strip().replace(' ', '_').lower()
+        if len(sanitized) < 3:
+            raise serializers.ValidationError("Username must be at least 3 characters.")
+        if User.objects.filter(username__iexact=sanitized).exists():
+            raise serializers.ValidationError(f"Username '{sanitized}' is already taken. Please choose another.")
+        return sanitized
+
     def validate(self, attrs):
         if attrs.get('password') != attrs.get('confirm_password'):
             raise serializers.ValidationError({"confirm_password": "Passwords do not match."})
@@ -80,7 +88,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         # Validate unique email
         email = attrs.get('email')
         if email and User.objects.filter(email__iexact=email).exists():
-            raise serializers.ValidationError({"email": "A user with this email already exists."})
+            raise serializers.ValidationError({"email": "A user with this email address already exists."})
 
         return attrs
 
