@@ -27,8 +27,10 @@ class AuthenticationTests(TestCase):
             'last_name': 'Customer',
             'role': UserRole.CUSTOMER,
             'phone_number': '+91 9876543210',
-            'organization': 'Assam Relief Center',
-            'department': 'Disaster Management',
+            'area_type': 'CITY',
+            'locality_name': 'Guwahati Hub',
+            'pincode': '781001',
+            'state': 'Assam',
             'delivery_address': 'Guwahati Hub'
         }
         response = self.client.post('/api/auth/register/', payload, format='json')
@@ -40,7 +42,7 @@ class AuthenticationTests(TestCase):
         user = User.objects.get(username='testcustomer')
         self.assertEqual(user.role, UserRole.CUSTOMER)
         self.assertTrue(CustomerProfile.objects.filter(user=user).exists())
-        self.assertEqual(user.customer_profile.department, 'Disaster Management')
+        self.assertEqual(user.customer_profile.state, 'Assam')
 
     def test_driver_registration(self):
         """Verify driver registration creates User and DriverProfile with vehicle info."""
@@ -53,9 +55,10 @@ class AuthenticationTests(TestCase):
             'last_name': 'Driver',
             'role': UserRole.DRIVER,
             'phone_number': '+91 9876543211',
-            'organization': 'NER Logistics Corp',
             'vehicle_number': 'TR-102',
-            'license_number': 'DRV-001'
+            'vehicle_type': 'HEAVY_TRUCK',
+            'license_number': 'DRV-001',
+            'license_issuing_state': 'Assam'
         }
         response = self.client.post('/api/auth/register/', payload, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -72,6 +75,7 @@ class AuthenticationTests(TestCase):
         payload = {
             'username': 'incompletedriver',
             'email': 'driver2@example.com',
+            'phone_number': '+91 9876543212',
             'password': 'SecurePassword123',
             'confirm_password': 'SecurePassword123',
             'role': UserRole.DRIVER,
@@ -88,7 +92,7 @@ class AuthenticationTests(TestCase):
             password='MyPassword123',
             role=UserRole.CUSTOMER
         )
-        CustomerProfile.objects.create(user=user, department='Logistics')
+        CustomerProfile.objects.create(user=user, locality_name='Guwahati', pincode='781001', state='Assam')
 
         # 1. Login with username
         login_response = self.client.post('/api/auth/login/', {
@@ -120,8 +124,9 @@ class AuthenticationTests(TestCase):
             'first_name': 'Bharathi',
             'role': UserRole.CUSTOMER,
             'phone_number': '782484954',
-            'organization': 'Assam State Transport Corporation (ASTC)',
-            'department': 'Emergency Relief & Logistics Operations'
+            'locality_name': 'Guwahati',
+            'pincode': '781001',
+            'state': 'Assam'
         }
         response = self.client.post('/api/auth/register/', payload, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -145,4 +150,76 @@ class AuthenticationTests(TestCase):
         response = self.client.post('/api/auth/register/', payload, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('email', response.data)
+
+    def test_authority_registration_requires_superadmin_approval(self):
+        """Verify government official registers with PENDING status and cannot log in until approved."""
+        payload = {
+            'username': 'official_sikkim',
+            'email': 'sikkim_official@gov.in',
+            'password': 'OfficialPass123',
+            'confirm_password': 'OfficialPass123',
+            'first_name': 'Karma',
+            'last_name': 'Bhutia',
+            'role': UserRole.ADMIN,
+            'official_id': 'SK-SDMA-099',
+            'designation': 'Executive Disaster Officer',
+            'department_name': 'Sikkim SDMA',
+            'jurisdiction_state': 'Sikkim',
+            'office_address': 'Tashiling Secretariat, Gangtok'
+        }
+        reg_response = self.client.post('/api/auth/register/', payload, format='json')
+        self.assertEqual(reg_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(reg_response.data['user']['role'], UserRole.ADMIN)
+
+        # Official cannot log in while PENDING
+        login_response = self.client.post('/api/auth/login/', {
+            'username': 'official_sikkim',
+            'password': 'OfficialPass123'
+        }, format='json')
+        self.assertEqual(login_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('pending', str(login_response.data).lower())
+
+        # Superadmin approves the official
+        user = User.objects.get(username='official_sikkim')
+        user.authority_profile.approval_status = 'APPROVED'
+        user.authority_profile.save()
+
+        # Official can now log in
+        login_after = self.client.post('/api/auth/login/', {
+            'username': 'official_sikkim',
+            'password': 'OfficialPass123'
+        }, format='json')
+        self.assertEqual(login_after.status_code, status.HTTP_200_OK)
+        self.assertIn('access', login_after.data)
+
+    def test_driver_registration_without_email_succeeds(self):
+        """Verify field drivers in mountain terrain without email can register successfully."""
+        payload = {
+            'username': 'hilldriver99',
+            'password': 'DriverPass123',
+            'confirm_password': 'DriverPass123',
+            'first_name': 'Tenzing',
+            'role': UserRole.DRIVER,
+            'phone_number': '+91 9436123456',
+            'vehicle_number': 'SK-01-E-9999',
+            'vehicle_type': 'HEAVY_TRUCK',
+            'license_number': 'SK20230009999',
+            'license_issuing_state': 'Sikkim'
+        }
+        response = self.client.post('/api/auth/register/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['user']['username'], 'hilldriver99')
+        user = User.objects.get(username='hilldriver99')
+        self.assertEqual(user.driver_profile.license_issuing_state, 'Sikkim')
+
+    def test_reroute_reports_endpoint(self):
+        """Verify reroute reports endpoint returns state data for Sikkim and Assam with corridor logs."""
+        response = self.client.get('/api/auth/reroute-reports/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        states = [s['state'] for s in response.data['state_wise_reports']]
+        self.assertIn('Sikkim', states)
+        self.assertIn('Assam', states)
+        sikkim_report = next(s for s in response.data['state_wise_reports'] if s['state'] == 'Sikkim')
+        self.assertEqual(sikkim_report['reroute_count'], 42)
+        self.assertTrue(len(response.data['corridor_logs']) > 0)
 

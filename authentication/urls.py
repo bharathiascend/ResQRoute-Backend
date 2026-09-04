@@ -5,6 +5,9 @@ from .views import (
     RegisterView,
     LoginView,
     UserProfileView,
+    AuthorityRequestListView,
+    AuthorityApprovalView,
+    RerouteReportsView,
 )
 
 urlpatterns = [
@@ -16,4 +19,9 @@ urlpatterns = [
     path('auth/login/', LoginView.as_view(), name='auth-login'),
     path('auth/token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
     path('auth/me/', UserProfileView.as_view(), name='user-profile'),
+
+    # Authority and Government Official Workflow
+    path('auth/authority-requests/', AuthorityRequestListView.as_view(), name='authority-requests-list'),
+    path('auth/authority-requests/<int:pk>/action/', AuthorityApprovalView.as_view(), name='authority-request-action'),
+    path('auth/reroute-reports/', RerouteReportsView.as_view(), name='reroute-reports'),
 ]

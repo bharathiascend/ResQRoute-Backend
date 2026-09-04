@@ -3,9 +3,20 @@ from django.contrib.auth.models import AbstractUser
 
 
 class UserRole(models.TextChoices):
-    CUSTOMER = 'CUSTOMER', 'Customer / User'
-    DRIVER = 'DRIVER', 'Driver'
-    ADMIN = 'ADMIN', 'Admin / Control Center'
+    CUSTOMER = 'CUSTOMER', 'Customer'
+    DRIVER = 'DRIVER', 'Field Driver'
+    ADMIN = 'ADMIN', 'Government Official / Authority'
+
+
+class AreaType(models.TextChoices):
+    CITY = 'CITY', 'City / Urban'
+    VILLAGE = 'VILLAGE', 'Village / Rural'
+
+
+class ApprovalStatus(models.TextChoices):
+    PENDING = 'PENDING', 'Pending Superadmin Approval'
+    APPROVED = 'APPROVED', 'Approved / Verified Authority'
+    REJECTED = 'REJECTED', 'Rejected'
 
 
 class User(AbstractUser):
@@ -24,6 +35,9 @@ class User(AbstractUser):
     def is_customer(self):
         return self.role == UserRole.CUSTOMER
 
+    def is_authority(self):
+        return self.role == UserRole.ADMIN
+
     def is_admin_user(self):
         return self.role == UserRole.ADMIN or self.is_superuser
 
@@ -37,13 +51,28 @@ class DriverProfile(models.Model):
         on_delete=models.CASCADE,
         related_name='driver_profile'
     )
+    vehicle_type = models.CharField(
+        max_length=60,
+        default='Heavy Emergency Truck',
+        help_text="Truck or cargo vehicle specification"
+    )
     vehicle_number = models.CharField(
         max_length=50,
         help_text="Assigned or primary vehicle identifier (e.g. TR-102)"
     )
     license_number = models.CharField(
         max_length=50,
-        help_text="Official driving license or driver ID (e.g. DRV-001)"
+        help_text="Official driving license or driver ID (e.g. TN01 20190001234)"
+    )
+    license_issuing_state = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="State where driving license was issued"
+    )
+    license_expiry = models.DateField(
+        null=True,
+        blank=True,
+        help_text="License expiry date"
     )
     is_available = models.BooleanField(
         default=True,
@@ -57,7 +86,7 @@ class DriverProfile(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Driver: {self.user.get_full_name() or self.user.username} (Vehicle: {self.vehicle_number})"
+        return f"Driver: {self.user.get_full_name() or self.user.username} ({self.vehicle_type} - {self.vehicle_number})"
 
 
 class CustomerProfile(models.Model):
@@ -66,10 +95,80 @@ class CustomerProfile(models.Model):
         on_delete=models.CASCADE,
         related_name='customer_profile'
     )
+    area_type = models.CharField(
+        max_length=20,
+        choices=AreaType.choices,
+        default=AreaType.CITY,
+        help_text="Urban city vs rural village locality"
+    )
+    locality_name = models.CharField(
+        max_length=150,
+        blank=True,
+        help_text="City or Village name"
+    )
+    pincode = models.CharField(
+        max_length=10,
+        blank=True,
+        help_text="6-digit postal code"
+    )
+    state = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="North Eastern state jurisdiction"
+    )
     department = models.CharField(max_length=100, blank=True)
     delivery_address = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Customer: {self.user.get_full_name() or self.user.username} ({self.user.organization or 'General'})"
+        loc = self.locality_name or self.state or 'General'
+        return f"Customer: {self.user.get_full_name() or self.user.username} ({loc})"
+
+
+class AuthorityProfile(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='authority_profile'
+    )
+    official_id = models.CharField(
+        max_length=60,
+        help_text="Official Government Employee ID or Service Badge Code (e.g. MDoNER-AS-102)"
+    )
+    designation = models.CharField(
+        max_length=150,
+        help_text="Official government rank or title (e.g. District Disaster Management Officer)"
+    )
+    department_name = models.CharField(
+        max_length=150,
+        help_text="Government agency or ministry (e.g. MDoNER, ASDMA, BRO, NDRF)"
+    )
+    jurisdiction_state = models.CharField(
+        max_length=50,
+        help_text="State or regional jurisdiction across North Eastern corridor"
+    )
+    office_address = models.TextField(
+        blank=True,
+        help_text="Official government office or district headquarters address"
+    )
+    approval_status = models.CharField(
+        max_length=20,
+        choices=ApprovalStatus.choices,
+        default=ApprovalStatus.PENDING,
+        help_text="Verification status by central developer/superadmin"
+    )
+    approved_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='approved_authorities',
+        help_text="Superadmin who verified this authority"
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Authority: {self.user.get_full_name() or self.user.username} ({self.designation} - {self.jurisdiction_state} [{self.approval_status}])"
