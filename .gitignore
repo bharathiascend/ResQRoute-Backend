@@ -1,0 +1,28 @@
+# Python & bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments & secrets (CRITICAL: never commit credentials)
+.env
+.env.*
+!.env.example
+venv/
+env/
+.venv/
+ENV/
+
+# Database files (local dev only)
+*.sqlite3
+db.sqlite3-journal
+
+# Django collected static & media
+staticfiles/
+media/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
