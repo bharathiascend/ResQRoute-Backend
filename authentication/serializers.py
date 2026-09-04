@@ -66,13 +66,28 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             'delivery_address'
         )
 
+    def to_internal_value(self, data):
+        import re
+        if 'username' in data and isinstance(data['username'], str):
+            mutable_data = data.copy() if hasattr(data, 'copy') else dict(data)
+            mutable_data['username'] = re.sub(r'\s+', '_', mutable_data['username'].strip()).lower()
+            data = mutable_data
+        return super().to_internal_value(data)
+
     def validate_username(self, value):
-        sanitized = value.strip().replace(' ', '_').lower()
-        if len(sanitized) < 3:
+        if len(value) < 3:
             raise serializers.ValidationError("Username must be at least 3 characters.")
-        if User.objects.filter(username__iexact=sanitized).exists():
-            raise serializers.ValidationError(f"Username '{sanitized}' is already taken. Please choose another.")
-        return sanitized
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError(f"Username '{value}' is already registered. Please choose another.")
+        return value
+
+    def validate_email(self, value):
+        if value:
+            clean_email = value.strip().lower()
+            if User.objects.filter(email__iexact=clean_email).exists():
+                raise serializers.ValidationError("An account with this email address already exists.")
+            return clean_email
+        return value
 
     def validate(self, attrs):
         if attrs.get('password') != attrs.get('confirm_password'):
@@ -84,11 +99,6 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"vehicle_number": "Vehicle number is required for Driver registration."})
             if not attrs.get('license_number'):
                 raise serializers.ValidationError({"license_number": "License number is required for Driver registration."})
-
-        # Validate unique email
-        email = attrs.get('email')
-        if email and User.objects.filter(email__iexact=email).exists():
-            raise serializers.ValidationError({"email": "A user with this email address already exists."})
 
         return attrs
 

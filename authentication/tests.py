@@ -109,3 +109,40 @@ class AuthenticationTests(TestCase):
         self.assertEqual(me_response.status_code, status.HTTP_200_OK)
         self.assertEqual(me_response.data['username'], 'existinguser')
         self.assertEqual(me_response.data['role'], UserRole.CUSTOMER)
+
+    def test_registration_sanitizes_username_with_spaces(self):
+        """Verify username with spaces (e.g. 'Bharathi 02') is automatically sanitized to 'bharathi_02'."""
+        payload = {
+            'username': 'Bharathi 02',
+            'email': 'bharathiascend@gmail.com',
+            'password': 'SecurePassword123',
+            'confirm_password': 'SecurePassword123',
+            'first_name': 'Bharathi',
+            'role': UserRole.CUSTOMER,
+            'phone_number': '782484954',
+            'organization': 'Assam State Transport Corporation (ASTC)',
+            'department': 'Emergency Relief & Logistics Operations'
+        }
+        response = self.client.post('/api/auth/register/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['user']['username'], 'bharathi_02')
+        self.assertTrue(User.objects.filter(username='bharathi_02').exists())
+
+    def test_registration_duplicate_email_fails(self):
+        """Verify duplicate email returns clean 400 error."""
+        User.objects.create_user(
+            username='user1',
+            email='duplicate@example.com',
+            password='Password123'
+        )
+        payload = {
+            'username': 'user2',
+            'email': 'duplicate@example.com',
+            'password': 'Password123',
+            'confirm_password': 'Password123',
+            'role': UserRole.CUSTOMER
+        }
+        response = self.client.post('/api/auth/register/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('email', response.data)
+
