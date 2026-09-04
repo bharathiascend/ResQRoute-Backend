@@ -30,7 +30,9 @@ class HealthCheckView(APIView):
         return Response({
             "status": "ok",
             "service": "resqroute-api",
-            "database": db_status
+            "database": db_status,
+            "database_engine": connection.vendor,
+            "database_host": connection.settings_dict.get('HOST') or 'sqlite3'
         }, status=status.HTTP_200_OK)
 
 
