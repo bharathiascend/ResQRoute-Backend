@@ -71,25 +71,24 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-# Database Configuration
-# Supabase PostgreSQL (via DATABASE_URL) with seamless local SQLite fallback
-DATABASE_URL = os.environ.get('DATABASE_URL')
-if DATABASE_URL and '[YOUR-PASSWORD]' not in DATABASE_URL and DATABASE_URL.strip():
-    ssl_require = 'supabase.co' in DATABASE_URL
-    DATABASES = {
-        'default': dj_database_url.config(
-            default=DATABASE_URL,
-            conn_max_age=600,
-            ssl_require=ssl_require
-        )
-    }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
+# Database Configuration - Supabase PostgreSQL
+DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
+
+if not DATABASE_URL or '[YOUR-PASSWORD]' in DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL is missing or contains '[YOUR-PASSWORD]'! "
+        "Please provide your Supabase PostgreSQL connection string in Railway / .env: "
+        "postgresql://postgres.bydpwenvwufcxqyflxbz:<password>@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
+    )
+
+ssl_require = 'pooler.supabase.com' in DATABASE_URL or 'supabase.co' in DATABASE_URL
+DATABASES = {
+    'default': dj_database_url.config(
+        default=DATABASE_URL,
+        conn_max_age=0,
+        ssl_require=ssl_require
+    )
+}
 
 # Custom User Model
 AUTH_USER_MODEL = 'authentication.User'
