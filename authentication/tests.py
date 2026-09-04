@@ -223,3 +223,91 @@ class AuthenticationTests(TestCase):
         self.assertEqual(sikkim_report['reroute_count'], 42)
         self.assertTrue(len(response.data['corridor_logs']) > 0)
 
+    def test_driver_forgot_password_sms_generates_temp_password(self):
+        """Verify driver entering mobile number gets auto-generated temporary password."""
+        user = User.objects.create_user(
+            username='smsdriver',
+            password='OldPassword123',
+            role=UserRole.DRIVER,
+            phone_number='+91 9876543210'
+        )
+        DriverProfile.objects.create(user=user, vehicle_number='TR-102', license_number='LIC-102')
+
+        response = self.client.post('/api/auth/forgot-password/', {
+            'role': UserRole.DRIVER,
+            'phone_number': '9876543210'
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'success')
+        self.assertEqual(response.data['channel'], 'SMS')
+        temp_pwd = response.data['temp_password']
+        self.assertTrue(temp_pwd.startswith('Drv#'))
+
+        # Verify driver can log in with new temp password
+        login_res = self.client.post('/api/auth/login/', {
+            'username': 'smsdriver',
+            'password': temp_pwd
+        }, format='json')
+        self.assertEqual(login_res.status_code, status.HTTP_200_OK)
+
+    def test_customer_forgot_password_email_generates_temp_password(self):
+        """Verify customer entering email gets auto-generated temporary password."""
+        user = User.objects.create_user(
+            username='emailcust',
+            email='cust_reset@example.com',
+            password='OldPassword123',
+            role=UserRole.CUSTOMER
+        )
+        CustomerProfile.objects.create(user=user, locality_name='Guwahati', pincode='781001', state='Assam')
+
+        response = self.client.post('/api/auth/forgot-password/', {
+            'role': UserRole.CUSTOMER,
+            'email': 'cust_reset@example.com'
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'success')
+        self.assertEqual(response.data['channel'], 'EMAIL')
+        temp_pwd = response.data['temp_password']
+        self.assertTrue(temp_pwd.startswith('Cust#'))
+
+        # Verify customer can log in with new temp password
+        login_res = self.client.post('/api/auth/login/', {
+            'username': 'emailcust',
+            'password': temp_pwd
+        }, format='json')
+        self.assertEqual(login_res.status_code, status.HTTP_200_OK)
+
+    def test_change_password_inside_dashboard(self):
+        """Verify logged-in user can change their password inside dashboard."""
+        user = User.objects.create_user(
+            username='changepassuser',
+            password='TempPassword123',
+            role=UserRole.CUSTOMER
+        )
+        CustomerProfile.objects.create(user=user, locality_name='Guwahati', pincode='781001', state='Assam')
+
+        # Login to get token
+        login_res = self.client.post('/api/auth/login/', {
+            'username': 'changepassuser',
+            'password': 'TempPassword123'
+        }, format='json')
+        token = login_res.data['access']
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        # Change password
+        change_res = self.client.post('/api/auth/change-password/', {
+            'current_password': 'TempPassword123',
+            'new_password': 'MyNewPermanentPass123',
+            'confirm_new_password': 'MyNewPermanentPass123'
+        }, format='json')
+        self.assertEqual(change_res.status_code, status.HTTP_200_OK)
+
+        # Verify login works with new password
+        self.client.credentials()
+        login_new = self.client.post('/api/auth/login/', {
+            'username': 'changepassuser',
+            'password': 'MyNewPermanentPass123'
+        }, format='json')
+        self.assertEqual(login_new.status_code, status.HTTP_200_OK)
+
+

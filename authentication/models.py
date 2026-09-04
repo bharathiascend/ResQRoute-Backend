@@ -74,6 +74,16 @@ class DriverProfile(models.Model):
         blank=True,
         help_text="License expiry date"
     )
+    state = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Operating or registered state"
+    )
+    district = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Operating or registered district"
+    )
     is_available = models.BooleanField(
         default=True,
         help_text="Availability status for dispatch and trip activation"
@@ -105,6 +115,11 @@ class CustomerProfile(models.Model):
         max_length=150,
         blank=True,
         help_text="City or Village name"
+    )
+    district = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="District location"
     )
     pincode = models.CharField(
         max_length=10,
@@ -148,6 +163,11 @@ class AuthorityProfile(models.Model):
         max_length=50,
         help_text="State or regional jurisdiction across North Eastern corridor"
     )
+    district_office = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="District office or regional jurisdiction (Optional)"
+    )
     office_address = models.TextField(
         blank=True,
         help_text="Official government office or district headquarters address"
@@ -172,3 +192,32 @@ class AuthorityProfile(models.Model):
 
     def __str__(self):
         return f"Authority: {self.user.get_full_name() or self.user.username} ({self.designation} - {self.jurisdiction_state} [{self.approval_status}])"
+
+
+class OfficialPasswordResetRequest(models.Model):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='password_reset_requests'
+    )
+    official_id = models.CharField(max_length=60)
+    email = models.EmailField(blank=True)
+    reason = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=ApprovalStatus.choices,
+        default=ApprovalStatus.PENDING
+    )
+    temp_password = models.CharField(max_length=128, blank=True)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='resolved_password_resets'
+    )
+
+    def __str__(self):
+        return f"ResetRequest: {self.official_id} ({self.user.username}) [{self.status}]"

@@ -5,11 +5,14 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import User
+from .models import User, UserRole, AuthorityProfile, ApprovalStatus, OfficialPasswordResetRequest
 from .serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
     UserProfileSerializer,
+    ForgotPasswordSerializer,
+    ChangePasswordSerializer,
+    OfficialPasswordResetRequestSerializer,
 )
 
 
@@ -317,4 +320,106 @@ class RerouteReportsView(APIView):
             ]
         }
         return Response(data, status=status.HTTP_200_OK)
+
+
+class ForgotPasswordView(APIView):
+    """
+    Role-specific Forgot Password endpoint:
+    - DRIVER: Enters phone_number -> Receives simulated SMS auto-generated temporary password
+    - CUSTOMER: Enters email -> Receives simulated Email auto-generated temporary password
+    - ADMIN: Enters official_id/email -> Queues reset request to Superadmin
+    POST /api/auth/forgot-password/
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class ChangePasswordView(APIView):
+    """
+    Update password from inside user dashboard:
+    POST /api/auth/change-password/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"message": "Password updated successfully. Your account is secure."}, status=status.HTTP_200_OK)
+
+
+class OfficialResetRequestsListView(APIView):
+    """
+    Superadmin view of official password reset requests:
+    GET /api/auth/official-reset-requests/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not (request.user.is_superuser or request.user.is_staff or request.user.role == UserRole.ADMIN):
+            return Response({"detail": "Access restricted to Superadmin and Authorized Administrators."},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        requests = OfficialPasswordResetRequest.objects.all().order_by('-requested_at')
+        serializer = OfficialPasswordResetRequestSerializer(requests, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class OfficialResetActionView(APIView):
+    """
+    Superadmin approval or rejection of official password reset request:
+    POST /api/auth/official-reset-requests/<id>/action/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        if not (request.user.is_superuser or request.user.is_staff or request.user.role == UserRole.ADMIN):
+            return Response({"detail": "Access restricted to Superadmin and Authorized Administrators."},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            reset_req = OfficialPasswordResetRequest.objects.get(pk=pk)
+        except OfficialPasswordResetRequest.DoesNotExist:
+            return Response({"detail": "Reset request not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        import secrets, string
+        from django.utils import timezone
+
+        action = request.data.get('action', 'approve').lower()
+        if action == 'approve':
+            random_num = ''.join(secrets.choice(string.digits) for _ in range(6))
+            temp_password = f"Gov#{random_num}"
+            reset_req.user.set_password(temp_password)
+            reset_req.user.save()
+
+            reset_req.status = ApprovalStatus.APPROVED
+            reset_req.temp_password = temp_password
+            reset_req.resolved_at = timezone.now()
+            reset_req.resolved_by = request.user
+            reset_req.save()
+
+            return Response({
+                "message": f"Password reset approved for {reset_req.user.get_full_name() or reset_req.user.username}.",
+                "official_id": reset_req.official_id,
+                "temp_password": temp_password,
+                "status": "APPROVED"
+            }, status=status.HTTP_200_OK)
+
+        elif action == 'reject':
+            reset_req.status = ApprovalStatus.REJECTED
+            reset_req.resolved_at = timezone.now()
+            reset_req.resolved_by = request.user
+            reset_req.save()
+            return Response({
+                "message": f"Password reset request rejected for {reset_req.user.get_full_name() or reset_req.user.username}.",
+                "status": "REJECTED"
+            }, status=status.HTTP_200_OK)
+
+        return Response({"detail": "Invalid action. Use 'approve' or 'reject'."}, status=status.HTTP_400_BAD_REQUEST)
+
 
