@@ -12,4 +12,5 @@ urlpatterns = [
     
     # API endpoints
     path('api/', include('authentication.urls')),
+    path('api/logistics/', include('logistics.urls')),
 ]

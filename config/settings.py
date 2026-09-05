@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'corsheaders',
     # Local apps
     'authentication.apps.AuthenticationConfig',
+    'logistics.apps.LogisticsConfig',
 ]
 
 MIDDLEWARE = [
