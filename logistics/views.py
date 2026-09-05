@@ -3,6 +3,8 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from rest_framework import views, status, permissions
 from rest_framework.response import Response
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import InvalidToken, AuthenticationFailed
 
 from .models import Shipment, Trip, ShipmentStatus, TripStatus, RiskLevel
 from .serializers import (
@@ -17,6 +19,18 @@ from .ai_risk_engine import evaluate_corridor_risk
 from .qr_service import generate_qr_svg, generate_qr_data_url
 
 User = get_user_model()
+
+
+class OptionalJWTAuthentication(JWTAuthentication):
+    """
+    Tolerates invalid/expired tokens without throwing 401 on public or demo endpoints.
+    If token is valid, request.user is set; otherwise defaults to AnonymousUser.
+    """
+    def authenticate(self, request):
+        try:
+            return super().authenticate(request)
+        except (InvalidToken, AuthenticationFailed):
+            return None
 
 
 def _get_next_shipment_code() -> str:
@@ -41,6 +55,7 @@ class ShipmentListCreateView(views.APIView):
     GET: List all shipments or customer-specific shipments.
     POST: Requisition a new shipment, run AI risk evaluation, and generate QR badge.
     """
+    authentication_classes = [OptionalJWTAuthentication]
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
@@ -131,6 +146,7 @@ class ShipmentListCreateView(views.APIView):
 
 class ShipmentDetailView(views.APIView):
     """Retrieve details and QR badge for a specific shipment."""
+    authentication_classes = [OptionalJWTAuthentication]
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, code):
@@ -149,6 +165,7 @@ class TripActivateView(views.APIView):
     Driver activates trip using scanned QR Code token or shipment code.
     Changes Trip to ACTIVE and Shipment to IN_TRANSIT.
     """
+    authentication_classes = [OptionalJWTAuthentication]
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -220,6 +237,7 @@ class TripActivateView(views.APIView):
 
 class TripStatusUpdateView(views.APIView):
     """Update trip transit status (e.g. IN_TRANSIT, COMPLETED)."""
+    authentication_classes = [OptionalJWTAuthentication]
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, trip_code):
@@ -256,6 +274,7 @@ class TripStatusUpdateView(views.APIView):
 
 class DriverActiveTripsView(views.APIView):
     """List active / pending trips for driver interface."""
+    authentication_classes = [OptionalJWTAuthentication]
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
@@ -272,6 +291,7 @@ class RouteRiskEvaluateView(views.APIView):
     On-demand AI route risk simulation without committing to a shipment.
     Evaluates hazards using OpenAI gpt-4o-mini + North East terrain model.
     """
+    authentication_classes = [OptionalJWTAuthentication]
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
